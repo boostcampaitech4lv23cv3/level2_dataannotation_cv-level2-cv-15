@@ -80,7 +80,7 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
     model = EAST()
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=0.001)
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=0.00006)
     wandb.watch(model, log='all')
     
     # early_stopping : 12번의 epoch 연속으로 val loss 미개선 시에 조기 종료
