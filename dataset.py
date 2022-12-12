@@ -334,8 +334,7 @@ def filter_vertices(vertices, labels, ignore_under=0, drop_under=0):
 
 
 class SceneTextDataset(Dataset):
-    def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, color_jitter=True,
-                 normalize=True):
+    def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, train_transform=True):
         with open(osp.join(root_dir, 'ufo/{}.json'.format(split)), 'r') as f:
             anno = json.load(f)
 
@@ -344,7 +343,7 @@ class SceneTextDataset(Dataset):
         self.image_dir = osp.join(root_dir, 'images')
 
         self.image_size, self.crop_size = image_size, crop_size
-        self.color_jitter, self.normalize = color_jitter, normalize
+        self.train_transform = train_transform
 
     def __len__(self):
         return len(self.image_fnames)
@@ -372,13 +371,15 @@ class SceneTextDataset(Dataset):
         image = np.array(image)
 
         funcs = []
-        if self.color_jitter:
+        if self.train_transform:
             funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
-        if self.normalize:
+            funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
+        else:
             funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
         transform = A.Compose(funcs)
 
         image = transform(image=image)['image']
+        
         word_bboxes = np.reshape(vertices, (-1, 4, 2))
         roi_mask = generate_roi_mask(image, vertices, labels)
 
