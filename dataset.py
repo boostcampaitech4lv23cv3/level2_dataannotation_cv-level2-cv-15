@@ -199,9 +199,9 @@ def crop_img(img, vertices, labels, length):
     h, w = img.height, img.width
     # confirm the shortest side of image >= length
     if h >= w and w < length:
-        img = img.resize((length, int(h * length / w)), Image.BILINEAR)
+        img = img.resize((length, int(h * length / w)), Image.LANCZOS)
     elif h < w and h < length:
-        img = img.resize((int(w * length / h), length), Image.BILINEAR)
+        img = img.resize((int(w * length / h), length), Image.LANCZOS)
     ratio_w = img.width / w
     ratio_h = img.height / h
     assert(ratio_w >= 1 and ratio_h >= 1)
@@ -259,9 +259,9 @@ def resize_img(img, vertices, size):
     h, w = img.height, img.width
     ratio = size / max(h, w)
     if w > h:
-        img = img.resize((size, int(h * ratio)), Image.BILINEAR)
+        img = img.resize((size, int(h * ratio)), Image.LANCZOS)
     else:
-        img = img.resize((int(w * ratio), size), Image.BILINEAR)
+        img = img.resize((int(w * ratio), size), Image.LANCZOS)
     new_vertices = vertices * ratio
     return img, new_vertices
 
@@ -279,7 +279,7 @@ def adjust_height(img, vertices, ratio=0.2):
     ratio_h = 1 + ratio * (np.random.rand() * 2 - 1)
     old_h = img.height
     new_h = int(np.around(old_h * ratio_h))
-    img = img.resize((img.width, new_h), Image.BILINEAR)
+    img = img.resize((img.width, new_h), Image.LANCZOS)
 
     new_vertices = vertices.copy()
     if vertices.size > 0:
