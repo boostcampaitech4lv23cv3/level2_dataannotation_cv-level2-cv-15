@@ -286,6 +286,26 @@ def adjust_height(img, vertices, ratio=0.2):
         new_vertices[:,[1,3,5,7]] = vertices[:,[1,3,5,7]] * (new_h / old_h)
     return img, new_vertices
 
+def multi_scale(img, vertices, ratio=0.4):
+    '''adjust height of image to aug data
+    Input:
+        img         : PIL Image
+        vertices    : vertices of text regions <numpy.ndarray, (n,8)>
+        ratio       : changes in [0.6, 1.4]
+    Output:
+        img         : adjusted PIL Image
+        new_vertices: adjusted vertices
+    '''
+    r = 1 + ratio * (np.random.rand() * 2 - 1)
+    old_w, old_h = img.width, img.height
+    new_w, new_h = int(np.around(old_w * r)), int(np.around(old_h * r))
+    img = img.resize((new_w, new_h), Image.LANCZOS) # Image.LANCZOS가 제일 퀄리티 있게 나오는 보간법
+
+    new_vertices = vertices.copy()
+    if vertices.size > 0:
+        new_vertices[:,[0,2,4,6]] = vertices[:,[0,2,4,6]] * (new_w / old_w)
+        new_vertices[:,[1,3,5,7]] = vertices[:,[1,3,5,7]] * (new_h / old_h)
+    return img, new_vertices
 
 def rotate_img(img, vertices, angle_range=10):
     '''rotate image [-10, 10] degree to aug data
@@ -362,7 +382,7 @@ class SceneTextDataset(Dataset):
 
         image = Image.open(image_fpath)
         image, vertices = resize_img(image, vertices, self.image_size)
-        image, vertices = adjust_height(image, vertices)
+        image, vertices = multi_scale(image, vertices)
         image, vertices = rotate_img(image, vertices)
         image, vertices = crop_img(image, vertices, labels, self.crop_size)
 
@@ -372,7 +392,22 @@ class SceneTextDataset(Dataset):
 
         funcs = []
         if self.train_transform:
-            funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
+            funcs.append(
+                A.OneOf([
+                    A.ColorJitter(0.5, 0.5, 0.5, 0.25),
+                    A.ISONoise(p=1),
+                    A.RandomGamma(p=1),
+                    A.HueSaturationValue(p=1),
+                    A.ChannelShuffle(p=1),
+                    A.CLAHE(clip_limit=(1, 10), p=1),
+                    A.RandomBrightnessContrast(p=1),
+                ], p=0.5))
+            funcs.append(
+                A.OneOf([
+                    A.Emboss(p=1),
+                    A.Sharpen(p=1),
+                    A.Equalize(p=1),
+                ], p=0.2))
             funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
         else:
             funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
