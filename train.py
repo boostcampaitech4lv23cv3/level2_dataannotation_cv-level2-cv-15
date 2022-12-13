@@ -80,11 +80,11 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
     model = EAST()
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=0.00006)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.3, patience=5, verbose=1)
     wandb.watch(model, log='all')
     
-    # early_stopping : 12번의 epoch 연속으로 val loss 미개선 시에 조기 종료
-    patience = 12
+    # early_stopping : 17번의 epoch 연속으로 val loss 미개선 시에 조기 종료
+    patience = 17
 
     best_val_loss = np.inf
     for epoch in range(max_epoch):
@@ -120,7 +120,6 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
         
         wandb.log({
             "Charts/learning_rate": optimizer.param_groups[0]['lr']})
-        scheduler.step()
         
         print('Mean train loss: {:.4f} | Elapsed time: {}'.format(
             epoch_loss / train_num_batches, timedelta(seconds=time.time() - epoch_start)))
@@ -154,6 +153,7 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
                     pbar.set_postfix(val_dict)
             
             val_loss = epoch_loss / val_num_batches
+            scheduler.step(val_loss)
             
             print('Mean val loss: {:.4f} | Elapsed time: {}'.format(
                 val_loss, timedelta(seconds=time.time() - epoch_start)))
