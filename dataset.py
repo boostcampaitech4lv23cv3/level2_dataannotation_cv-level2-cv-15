@@ -381,9 +381,12 @@ class SceneTextDataset(Dataset):
         vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
 
         image = Image.open(image_fpath)
+        
         image, vertices = resize_img(image, vertices, self.image_size)
-        image, vertices = multi_scale(image, vertices)
-        image, vertices = rotate_img(image, vertices)
+        if self.train_transform:
+            image, vertices = multi_scale(image, vertices)
+            image, vertices = adjust_height(image, vertices)
+            image, vertices = rotate_img(image, vertices)
         image, vertices = crop_img(image, vertices, labels, self.crop_size)
 
         if image.mode != 'RGB':
@@ -394,14 +397,14 @@ class SceneTextDataset(Dataset):
         if self.train_transform:
             funcs.append(
                 A.OneOf([
-                    A.ColorJitter(0.5, 0.5, 0.5, 0.25),
+                    A.ColorJitter(0.3, 0.3, 0.3, 0.2),
                     A.ISONoise(p=1),
                     A.RandomGamma(p=1),
                     A.HueSaturationValue(p=1),
                     A.ChannelShuffle(p=1),
                     A.CLAHE(clip_limit=(1, 10), p=1),
                     A.RandomBrightnessContrast(p=1),
-                ], p=0.5))
+                ], p=0.3))
             funcs.append(
                 A.OneOf([
                     A.Emboss(p=1),
