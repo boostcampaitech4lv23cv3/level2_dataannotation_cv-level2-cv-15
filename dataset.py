@@ -199,9 +199,9 @@ def crop_img(img, vertices, labels, length):
     h, w = img.height, img.width
     # confirm the shortest side of image >= length
     if h >= w and w < length:
-        img = img.resize((length, int(h * length / w)), Image.BILINEAR)
+        img = img.resize((length, int(h * length / w)), Image.LANCZOS)
     elif h < w and h < length:
-        img = img.resize((int(w * length / h), length), Image.BILINEAR)
+        img = img.resize((int(w * length / h), length), Image.LANCZOS)
     ratio_w = img.width / w
     ratio_h = img.height / h
     assert(ratio_w >= 1 and ratio_h >= 1)
@@ -259,9 +259,9 @@ def resize_img(img, vertices, size):
     h, w = img.height, img.width
     ratio = size / max(h, w)
     if w > h:
-        img = img.resize((size, int(h * ratio)), Image.BILINEAR)
+        img = img.resize((size, int(h * ratio)), Image.LANCZOS)
     else:
-        img = img.resize((int(w * ratio), size), Image.BILINEAR)
+        img = img.resize((int(w * ratio), size), Image.LANCZOS)
     new_vertices = vertices * ratio
     return img, new_vertices
 
@@ -279,13 +279,33 @@ def adjust_height(img, vertices, ratio=0.2):
     ratio_h = 1 + ratio * (np.random.rand() * 2 - 1)
     old_h = img.height
     new_h = int(np.around(old_h * ratio_h))
-    img = img.resize((img.width, new_h), Image.BILINEAR)
+    img = img.resize((img.width, new_h), Image.LANCZOS)
 
     new_vertices = vertices.copy()
     if vertices.size > 0:
         new_vertices[:,[1,3,5,7]] = vertices[:,[1,3,5,7]] * (new_h / old_h)
     return img, new_vertices
 
+def multi_scale(img, vertices, ratio=0.4):
+    '''adjust height of image to aug data
+    Input:
+        img         : PIL Image
+        vertices    : vertices of text regions <numpy.ndarray, (n,8)>
+        ratio       : changes in [0.6, 1.4]
+    Output:
+        img         : adjusted PIL Image
+        new_vertices: adjusted vertices
+    '''
+    r = 1 + ratio * (np.random.rand() * 2 - 1)
+    old_w, old_h = img.width, img.height
+    new_w, new_h = int(np.around(old_w * r)), int(np.around(old_h * r))
+    img = img.resize((new_w, new_h), Image.LANCZOS) # Image.LANCZOS가 제일 퀄리티 있게 나오는 보간법
+
+    new_vertices = vertices.copy()
+    if vertices.size > 0:
+        new_vertices[:,[0,2,4,6]] = vertices[:,[0,2,4,6]] * (new_w / old_w)
+        new_vertices[:,[1,3,5,7]] = vertices[:,[1,3,5,7]] * (new_h / old_h)
+    return img, new_vertices
 
 def rotate_img(img, vertices, angle_range=10):
     '''rotate image [-10, 10] degree to aug data
@@ -334,8 +354,7 @@ def filter_vertices(vertices, labels, ignore_under=0, drop_under=0):
 
 
 class SceneTextDataset(Dataset):
-    def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, color_jitter=True,
-                 normalize=True):
+    def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, train_transform=True):
         with open(osp.join(root_dir, 'ufo/{}.json'.format(split)), 'r') as f:
             anno = json.load(f)
 
@@ -344,7 +363,7 @@ class SceneTextDataset(Dataset):
         self.image_dir = osp.join(root_dir, 'images')
 
         self.image_size, self.crop_size = image_size, crop_size
-        self.color_jitter, self.normalize = color_jitter, normalize
+        self.train_transform = train_transform
 
     def __len__(self):
         return len(self.image_fnames)
@@ -362,9 +381,12 @@ class SceneTextDataset(Dataset):
         vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
 
         image = Image.open(image_fpath)
+        
         image, vertices = resize_img(image, vertices, self.image_size)
-        image, vertices = adjust_height(image, vertices)
-        image, vertices = rotate_img(image, vertices)
+        if self.train_transform:
+            image, vertices = multi_scale(image, vertices)
+            image, vertices = adjust_height(image, vertices)
+            image, vertices = rotate_img(image, vertices)
         image, vertices = crop_img(image, vertices, labels, self.crop_size)
 
         if image.mode != 'RGB':
@@ -372,13 +394,30 @@ class SceneTextDataset(Dataset):
         image = np.array(image)
 
         funcs = []
-        if self.color_jitter:
-            funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
-        if self.normalize:
+        if self.train_transform:
+            funcs.append(
+                A.OneOf([
+                    A.ColorJitter(0.3, 0.3, 0.3, 0.2),
+                    A.ISONoise(p=1),
+                    A.RandomGamma(p=1),
+                    A.HueSaturationValue(p=1),
+                    A.ChannelShuffle(p=1),
+                    A.CLAHE(clip_limit=(1, 10), p=1),
+                    A.RandomBrightnessContrast(p=1),
+                ], p=0.3))
+            funcs.append(
+                A.OneOf([
+                    A.Emboss(p=1),
+                    A.Sharpen(p=1),
+                    A.Equalize(p=1),
+                ], p=0.2))
+            funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
+        else:
             funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
         transform = A.Compose(funcs)
 
         image = transform(image=image)['image']
+        
         word_bboxes = np.reshape(vertices, (-1, 4, 2))
         roi_mask = generate_roi_mask(image, vertices, labels)
 
